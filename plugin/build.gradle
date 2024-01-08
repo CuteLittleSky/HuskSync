@@ -1,6 +1,4 @@
 dependencies {
     implementation project(path: ':bukkit', configuration: 'shadow')
-}
-
-shadowJar {
+    runtimeOnly project(path: ':paper')
 }

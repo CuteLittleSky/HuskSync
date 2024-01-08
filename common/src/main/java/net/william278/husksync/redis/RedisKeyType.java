@@ -24,18 +24,22 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Locale;
 
 public enum RedisKeyType {
-    CACHE(60 * 60 * 24),
-    DATA_UPDATE(10),
-    SERVER_SWITCH(10);
 
-    public final int timeToLive;
+    LATEST_SNAPSHOT,
+    SERVER_SWITCH,
+    DATA_CHECKOUT;
 
-    RedisKeyType(int timeToLive) {
-        this.timeToLive = timeToLive;
-    }
+    public static final int TTL_1_YEAR = 60 * 60 * 24 * 7 * 52; // 1 year
+    public static final int TTL_10_SECONDS = 10; // 10 seconds
 
     @NotNull
-    public String getKeyPrefix() {
-        return RedisManager.KEY_NAMESPACE.toLowerCase(Locale.ENGLISH) + ":" + RedisManager.clusterId.toLowerCase(Locale.ENGLISH) + ":" + name().toLowerCase(Locale.ENGLISH);
+    public String getKeyPrefix(@NotNull String clusterId) {
+        return String.format(
+                "%s:%s:%s",
+                RedisManager.KEY_NAMESPACE.toLowerCase(Locale.ENGLISH),
+                clusterId.toLowerCase(Locale.ENGLISH),
+                name().toLowerCase(Locale.ENGLISH)
+        );
     }
+
 }
