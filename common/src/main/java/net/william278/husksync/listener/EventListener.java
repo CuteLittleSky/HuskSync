@@ -28,7 +28,8 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+
+import static net.william278.husksync.config.Settings.SynchronizationSettings.SaveOnDeathSettings;
 
 /**
  * Handles what should happen when events are fired
@@ -74,12 +75,12 @@ public abstract class EventListener {
      * @param usersInWorld a list of users in the world that is being saved
      */
     protected final void saveOnWorldSave(@NotNull List<OnlineUser> usersInWorld) {
-        if (plugin.isDisabling() || !plugin.getSettings().doSaveOnWorldSave()) {
+        if (plugin.isDisabling() || !plugin.getSettings().getSynchronization().isSaveOnWorldSave()) {
             return;
         }
         usersInWorld.stream()
                 .filter(user -> !plugin.isLocked(user.getUuid()) && !user.isNpc())
-                .forEach(user -> plugin.getDatabase().addSnapshot(
+                .forEach(user -> plugin.getDataSyncer().saveData(
                         user, user.createSnapshot(DataSnapshot.SaveCause.WORLD_SAVE)
                 ));
     }
@@ -91,25 +92,17 @@ public abstract class EventListener {
      * @param items The items that should be saved for this user on their death
      */
     protected void saveOnPlayerDeath(@NotNull OnlineUser user, @NotNull Data.Items items) {
-        if (plugin.isDisabling() || !plugin.getSettings().doSaveOnDeath() || plugin.isLocked(user.getUuid())
-                || user.isNpc() || (!plugin.getSettings().doSaveEmptyDeathItems() && items.isEmpty())) {
+        final SaveOnDeathSettings settings = plugin.getSettings().getSynchronization().getSaveOnDeath();
+        if (plugin.isDisabling() || !settings.isEnabled() || plugin.isLocked(user.getUuid())
+                || user.isNpc() || (!settings.isSaveEmptyItems() && items.isEmpty())) {
             return;
         }
 
         final DataSnapshot.Packed snapshot = user.createSnapshot(DataSnapshot.SaveCause.DEATH);
         snapshot.edit(plugin, (data -> data.getInventory().ifPresent(inventory -> inventory.setContents(items))));
-        plugin.getDatabase().addSnapshot(user, snapshot);
+        plugin.getDataSyncer().saveData(user, snapshot);
     }
 
-    /**
-     * Determine whether a player event should be canceled
-     *
-     * @param userUuid The UUID of the user to check
-     * @return Whether the event should be canceled
-     */
-    protected final boolean cancelPlayerEvent(@NotNull UUID userUuid) {
-        return plugin.isDisabling() || plugin.isLocked(userUuid);
-    }
 
     /**
      * Handle the plugin disabling
@@ -120,7 +113,11 @@ public abstract class EventListener {
                 .filter(user -> !plugin.isLocked(user.getUuid()) && !user.isNpc())
                 .forEach(user -> {
                     plugin.lockPlayer(user.getUuid());
-                    plugin.getDatabase().addSnapshot(user, user.createSnapshot(DataSnapshot.SaveCause.SERVER_SHUTDOWN));
+                    plugin.getDataSyncer().saveData(
+                            user,
+                            user.createSnapshot(DataSnapshot.SaveCause.SERVER_SHUTDOWN),
+                            (saved, data) -> plugin.getRedisManager().clearUserData(saved)
+                    );
                 });
 
         // Close outstanding connections
@@ -164,7 +161,6 @@ public abstract class EventListener {
         private Map.Entry<String, String> toEntry() {
             return Map.entry(name().toLowerCase(), defaultPriority.name());
         }
-
 
         @SuppressWarnings("unchecked")
         @NotNull

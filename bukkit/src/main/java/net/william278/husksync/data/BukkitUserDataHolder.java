@@ -25,7 +25,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.PlayerInventory;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Map;
 import java.util.Optional;
 
 public interface BukkitUserDataHolder extends UserDataHolder {
@@ -42,8 +41,10 @@ public interface BukkitUserDataHolder extends UserDataHolder {
                 case "statistics" -> getStatistics();
                 case "health" -> getHealth();
                 case "hunger" -> getHunger();
+                case "attributes" -> getAttributes();
                 case "experience" -> getExperience();
                 case "game_mode" -> getGameMode();
+                case "flight_status" -> getFlightStatus();
                 case "persistent_data" -> getPersistentData();
                 default -> throw new IllegalStateException(String.format("Unexpected data type: %s", id));
             };
@@ -62,7 +63,8 @@ public interface BukkitUserDataHolder extends UserDataHolder {
     @NotNull
     @Override
     default Optional<Data.Items.Inventory> getInventory() {
-        if ((isDead() && !getPlugin().getSettings().doSynchronizeDeadPlayersChangingServer())) {
+        if ((isDead() && !getPlugin().getSettings().getSynchronization().getSaveOnDeath()
+                .isSyncDeadPlayersChangingServer())) {
             return Optional.of(BukkitData.Items.Inventory.empty());
         }
         final PlayerInventory inventory = getBukkitPlayer().getInventory();
@@ -118,6 +120,12 @@ public interface BukkitUserDataHolder extends UserDataHolder {
 
     @NotNull
     @Override
+    default Optional<Data.Attributes> getAttributes() {
+        return Optional.of(BukkitData.Attributes.adapt(getBukkitPlayer(), getPlugin()));
+    }
+
+    @NotNull
+    @Override
     default Optional<Data.Experience> getExperience() {
         return Optional.of(BukkitData.Experience.adapt(getBukkitPlayer()));
     }
@@ -130,6 +138,12 @@ public interface BukkitUserDataHolder extends UserDataHolder {
 
     @NotNull
     @Override
+    default Optional<Data.FlightStatus> getFlightStatus() {
+        return Optional.of(BukkitData.FlightStatus.adapt(getBukkitPlayer()));
+    }
+
+    @NotNull
+    @Override
     default Optional<Data.PersistentData> getPersistentData() {
         return Optional.of(BukkitData.PersistentData.adapt(getBukkitPlayer().getPersistentDataContainer()));
     }
@@ -138,9 +152,6 @@ public interface BukkitUserDataHolder extends UserDataHolder {
 
     @NotNull
     Player getBukkitPlayer();
-
-    @NotNull
-    Map<Identifier, Data> getCustomDataStore();
 
     @NotNull
     default BukkitMapPersister getMapPersister() {

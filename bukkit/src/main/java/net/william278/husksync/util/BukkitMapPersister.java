@@ -19,12 +19,13 @@
 
 package net.william278.husksync.util;
 
+import com.google.common.collect.Lists;
 import de.tr7zw.changeme.nbtapi.NBT;
 import de.tr7zw.changeme.nbtapi.iface.ReadWriteNBT;
 import de.tr7zw.changeme.nbtapi.iface.ReadableNBT;
 import net.querz.nbt.io.NBTUtil;
 import net.querz.nbt.tag.CompoundTag;
-import net.william278.husksync.HuskSync;
+import net.william278.husksync.BukkitHuskSync;
 import net.william278.mapdataapi.MapBanner;
 import net.william278.mapdataapi.MapData;
 import org.bukkit.Bukkit;
@@ -36,6 +37,7 @@ import org.bukkit.inventory.meta.MapMeta;
 import org.bukkit.map.*;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.awt.*;
 import java.io.File;
@@ -62,7 +64,7 @@ public interface BukkitMapPersister {
      */
     @NotNull
     default ItemStack[] persistLockedMaps(@NotNull ItemStack[] items, @NotNull Player delegateRenderer) {
-        if (!getPlugin().getSettings().doPersistLockedMaps()) {
+        if (!getPlugin().getSettings().getSynchronization().isPersistLockedMaps()) {
             return items;
         }
         return forEachMap(items, map -> this.persistMapView(map, delegateRenderer));
@@ -74,9 +76,9 @@ public interface BukkitMapPersister {
      * @param items the array of {@link ItemStack}s to apply persisted locked maps to
      * @return the array of {@link ItemStack}s with persisted locked maps applied
      */
-    @NotNull
-    default ItemStack[] setMapViews(@NotNull ItemStack[] items) {
-        if (!getPlugin().getSettings().doPersistLockedMaps()) {
+    @Nullable
+    default ItemStack @NotNull [] setMapViews(@Nullable ItemStack @NotNull [] items) {
+        if (!getPlugin().getSettings().getSynchronization().isPersistLockedMaps()) {
             return items;
         }
         return forEachMap(items, this::applyMapView);
@@ -84,7 +86,7 @@ public interface BukkitMapPersister {
 
     // Perform an operation on each map in an array of ItemStacks
     @NotNull
-    private ItemStack[] forEachMap(@NotNull ItemStack[] items, @NotNull Function<ItemStack, ItemStack> function) {
+    private ItemStack[] forEachMap(ItemStack[] items, @NotNull Function<ItemStack, ItemStack> function) {
         for (int i = 0; i < items.length; i++) {
             final ItemStack item = items[i];
             if (item == null) {
@@ -147,7 +149,7 @@ public interface BukkitMapPersister {
             // Search for an existing map view
             Optional<String> world = Optional.empty();
             for (String worldUid : mapIds.getKeys()) {
-                world = Bukkit.getWorlds().stream()
+                world = getPlugin().getServer().getWorlds().stream()
                         .map(w -> w.getUID().toString()).filter(u -> u.equals(worldUid))
                         .findFirst();
                 if (world.isPresent()) {
@@ -416,7 +418,7 @@ public interface BukkitMapPersister {
          */
         @NotNull
         private MapData extractMapData() {
-            final List<MapBanner> banners = new ArrayList<>();
+            final List<MapBanner> banners = Lists.newArrayList();
             final String BANNER_PREFIX = "banner_";
             for (int i = 0; i < getCursors().size(); i++) {
                 final MapCursor cursor = getCursors().getCursor(i);
@@ -440,6 +442,6 @@ public interface BukkitMapPersister {
 
     @ApiStatus.Internal
     @NotNull
-    HuskSync getPlugin();
+    BukkitHuskSync getPlugin();
 
 }
