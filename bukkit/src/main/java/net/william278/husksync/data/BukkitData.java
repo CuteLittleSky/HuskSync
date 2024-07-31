@@ -25,15 +25,19 @@ import com.google.gson.annotations.SerializedName;
 import de.tr7zw.changeme.nbtapi.NBTCompound;
 import de.tr7zw.changeme.nbtapi.NBTPersistentDataContainer;
 import lombok.*;
+import net.kyori.adventure.util.TriState;
 import net.william278.desertwell.util.ThrowingConsumer;
+import net.william278.desertwell.util.Version;
 import net.william278.husksync.BukkitHuskSync;
 import net.william278.husksync.HuskSync;
 import net.william278.husksync.adapter.Adaptable;
+import net.william278.husksync.config.Settings.SynchronizationSettings.AttributeSettings;
 import net.william278.husksync.user.BukkitUser;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.Registry;
 import org.bukkit.Statistic;
+import org.bukkit.NamespacedKey;
 import org.bukkit.advancement.AdvancementProgress;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.attribute.AttributeModifier;
@@ -48,6 +52,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Range;
 
+import java.lang.reflect.Constructor;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
@@ -69,7 +74,6 @@ public abstract class BukkitData implements Data {
         private final @Nullable ItemStack @NotNull [] contents;
 
         private Items(@Nullable ItemStack @NotNull [] contents) {
-
             this.contents = Arrays.stream(contents.clone())
                     .map(i -> i == null || i.getType() == Material.AIR ? null : i)
                     .toArray(ItemStack[]::new);
@@ -127,8 +131,6 @@ public abstract class BukkitData implements Data {
         @Getter
         public static class Inventory extends BukkitData.Items implements Data.Items.Inventory {
 
-            public static final int INVENTORY_SLOT_COUNT = 41;
-
             @Range(from = 0, to = 8)
             private int heldItemSlot;
 
@@ -163,11 +165,15 @@ public abstract class BukkitData implements Data {
             }
 
             private void clearInventoryCraftingSlots(@NotNull Player player) {
-                final org.bukkit.inventory.Inventory inventory = player.getOpenInventory().getTopInventory();
-                if (inventory.getType() == InventoryType.CRAFTING) {
-                    for (int slot = 0; slot < 5; slot++) {
-                        inventory.setItem(slot, null);
+                try {
+                    final org.bukkit.inventory.Inventory inventory = player.getOpenInventory().getTopInventory();
+                    if (inventory.getType() == InventoryType.CRAFTING) {
+                        for (int slot = 0; slot < 5; slot++) {
+                            inventory.setItem(slot, null);
+                        }
                     }
+                } catch (Throwable e) {
+                    // Ignore any exceptions
                 }
             }
 
@@ -175,15 +181,18 @@ public abstract class BukkitData implements Data {
 
         public static class EnderChest extends BukkitData.Items implements Data.Items.EnderChest {
 
-            public static final int ENDER_CHEST_SLOT_COUNT = 27;
-
-            private EnderChest(@NotNull ItemStack[] contents) {
+            private EnderChest(@Nullable ItemStack @NotNull [] contents) {
                 super(contents);
             }
 
             @NotNull
-            public static BukkitData.Items.EnderChest adapt(@NotNull ItemStack[] items) {
-                return new BukkitData.Items.EnderChest(items);
+            public static BukkitData.Items.EnderChest adapt(@Nullable ItemStack @NotNull [] contents) {
+                return new BukkitData.Items.EnderChest(contents);
+            }
+
+            @NotNull
+            public static BukkitData.Items.EnderChest adapt(@NotNull Collection<ItemStack> items) {
+                return adapt(items.toArray(ItemStack[]::new));
             }
 
             @NotNull
@@ -200,7 +209,7 @@ public abstract class BukkitData implements Data {
 
         public static class ItemArray extends BukkitData.Items implements Data.Items {
 
-            private ItemArray(@NotNull ItemStack[] contents) {
+            private ItemArray(@Nullable ItemStack @NotNull [] contents) {
                 super(contents);
             }
 
@@ -210,7 +219,7 @@ public abstract class BukkitData implements Data {
             }
 
             @NotNull
-            public static ItemArray adapt(@NotNull ItemStack[] drops) {
+            public static ItemArray adapt(@Nullable ItemStack @NotNull [] drops) {
                 return new ItemArray(drops);
             }
 
@@ -237,21 +246,20 @@ public abstract class BukkitData implements Data {
 
         @NotNull
         public static BukkitData.PotionEffects adapt(@NotNull Collection<Effect> effects) {
-            return from(
-                    effects.stream()
-                            .map(effect -> new PotionEffect(
-                                    Objects.requireNonNull(
-                                            PotionEffectType.getByName(effect.type()),
-                                            "Invalid potion effect type"
-                                    ),
-                                    effect.duration(),
-                                    effect.amplifier(),
-                                    effect.isAmbient(),
-                                    effect.showParticles(),
-                                    effect.hasIcon()
-                            ))
-                            .toList()
-            );
+            return from(effects.stream()
+                    .map(effect -> {
+                        final PotionEffectType type = matchEffectType(effect.type());
+                        return type != null ? new PotionEffect(
+                                type,
+                                effect.duration(),
+                                effect.amplifier(),
+                                effect.isAmbient(),
+                                effect.showParticles(),
+                                effect.hasIcon()
+                        ) : null;
+                    })
+                    .filter(Objects::nonNull)
+                    .toList());
         }
 
         @NotNull
@@ -342,9 +350,12 @@ public abstract class BukkitData implements Data {
             }));
         }
 
-        private void setAdvancement(@NotNull HuskSync plugin, @NotNull org.bukkit.advancement.Advancement advancement,
-                                    @NotNull Player player, @NotNull BukkitUser user,
-                                    @NotNull Collection<String> toAward, @NotNull Collection<String> toRevoke) {
+        private void setAdvancement(@NotNull HuskSync plugin,
+                                    @NotNull org.bukkit.advancement.Advancement advancement,
+                                    @NotNull Player player,
+                                    @NotNull BukkitUser user,
+                                    @NotNull Collection<String> toAward,
+                                    @NotNull Collection<String> toRevoke) {
             plugin.runSync(() -> {
                 // Track player exp level & progress
                 final int expLevel = player.getLevel();
@@ -356,7 +367,8 @@ public abstract class BukkitData implements Data {
                 toRevoke.forEach(progress::revokeCriteria);
 
                 // Set player experience and level (prevent advancement awards applying twice), reset game rule
-                if (!toAward.isEmpty() && player.getLevel() != expLevel || player.getExp() != expProgress) {
+                if (!toAward.isEmpty()
+                    && (player.getLevel() != expLevel || player.getExp() != expProgress)) {
                     player.setLevel(expLevel);
                     player.setExp(expProgress);
                 }
@@ -557,19 +569,24 @@ public abstract class BukkitData implements Data {
     @NoArgsConstructor(access = AccessLevel.PRIVATE)
     public static class Attributes extends BukkitData implements Data.Attributes, Adaptable {
 
+        private static final String EQUIPMENT_SLOT_GROUP = "org.bukkit.inventory.EquipmentSlotGroup";
+        private static final String EQUIPMENT_SLOT_GROUP$ANY = "ANY";
+        private static final String EQUIPMENT_SLOT$getGroup = "getGroup";
+        private static TriState USE_KEYED_MODIFIERS = TriState.NOT_SET;
+
         private List<Attribute> attributes;
 
         @NotNull
         public static BukkitData.Attributes adapt(@NotNull Player player, @NotNull HuskSync plugin) {
             final List<Attribute> attributes = Lists.newArrayList();
+            final AttributeSettings settings = plugin.getSettings().getSynchronization().getAttributes();
             Registry.ATTRIBUTE.forEach(id -> {
                 final AttributeInstance instance = player.getAttribute(id);
-                if (instance == null || instance.getValue() == instance.getDefaultValue() || plugin
-                        .getSettings().getSynchronization().isIgnoredAttribute(id.getKey().toString())) {
-                    // We don't sync unmodified or disabled attributes
-                    return;
+                if (instance == null || Double.compare(instance.getValue(), instance.getDefaultValue()) == 0
+                    || settings.isIgnoredAttribute(id.getKey().toString())) {
+                    return; // We don't sync unmodified or disabled attributes
                 }
-                attributes.add(adapt(instance));
+                attributes.add(adapt(instance, settings));
             });
             return new BukkitData.Attributes(attributes);
         }
@@ -588,18 +605,20 @@ public abstract class BukkitData implements Data {
         }
 
         @NotNull
-        private static Attribute adapt(@NotNull AttributeInstance instance) {
+        private static Attribute adapt(@NotNull AttributeInstance instance, @NotNull AttributeSettings settings) {
             return new Attribute(
                     instance.getAttribute().getKey().toString(),
                     instance.getBaseValue(),
-                    instance.getModifiers().stream().map(BukkitData.Attributes::adapt).collect(Collectors.toSet())
+                    instance.getModifiers().stream()
+                            .filter(modifier -> !settings.isIgnoredModifier(modifier.getName()))
+                            .map(BukkitData.Attributes::adapt).collect(Collectors.toSet())
             );
         }
 
         @NotNull
         private static Modifier adapt(@NotNull AttributeModifier modifier) {
             return new Modifier(
-                    modifier.getUniqueId(),
+                    getModifierId(modifier),
                     modifier.getName(),
                     modifier.getAmount(),
                     modifier.getOperation().ordinal(),
@@ -607,26 +626,75 @@ public abstract class BukkitData implements Data {
             );
         }
 
-        @Override
-        public void apply(@NotNull BukkitUser user, @NotNull BukkitHuskSync plugin) throws IllegalStateException {
-            Registry.ATTRIBUTE.forEach(id -> applyAttribute(user.getPlayer().getAttribute(id), getAttribute(id).orElse(null)));
+        @Nullable
+        private static UUID getModifierId(@NotNull AttributeModifier modifier) {
+            try {
+                return modifier.getUniqueId();
+            } catch (Throwable e) {
+                return null;
+            }
         }
 
-        private static void applyAttribute(@Nullable AttributeInstance instance, @Nullable Attribute attribute) {
+        private static void applyAttribute(@Nullable AttributeInstance instance, @Nullable Attribute attribute,
+                                           @NotNull HuskSync plugin) {
             if (instance == null) {
                 return;
             }
-            instance.setBaseValue(attribute == null ? instance.getDefaultValue() : instance.getBaseValue());
+            instance.setBaseValue(attribute == null ? instance.getDefaultValue() : attribute.baseValue());
             instance.getModifiers().forEach(instance::removeModifier);
             if (attribute != null) {
-                attribute.modifiers().forEach(modifier -> instance.addModifier(new AttributeModifier(
-                        modifier.uuid(),
-                        modifier.name(),
-                        modifier.amount(),
-                        AttributeModifier.Operation.values()[modifier.operationType()],
-                        modifier.equipmentSlot() != -1 ? EquipmentSlot.values()[modifier.equipmentSlot()] : null
-                )));
+                attribute.modifiers().stream()
+                        .filter(mod -> instance.getModifiers().stream().map(AttributeModifier::getName)
+                                .noneMatch(n -> n.equals(mod.name())))
+                        .distinct()
+                        .forEach(mod -> instance.addModifier(adapt(mod, plugin)));
             }
+        }
+
+        @SuppressWarnings("JavaReflectionMemberAccess")
+        @NotNull
+        private static AttributeModifier adapt(@NotNull Modifier modifier, @NotNull HuskSync plugin) {
+            final int slotId = modifier.equipmentSlot();
+            if (USE_KEYED_MODIFIERS == TriState.NOT_SET) {
+                boolean is1_21 = plugin.getMinecraftVersion().compareTo(Version.fromString("1.21")) >= 0;
+                USE_KEYED_MODIFIERS = TriState.byBoolean(is1_21);
+            }
+            if (USE_KEYED_MODIFIERS == TriState.TRUE) {
+                try {
+                    // Reflexively create a modern keyed attribute modifier instance. Remove in favor of API long-term.
+                    final EquipmentSlot slot = slotId != -1 ? EquipmentSlot.values()[slotId] : null;
+                    final Class<?> slotGroup = Class.forName(EQUIPMENT_SLOT_GROUP);
+                    final String modifierName = modifier.name() == null ? modifier.uuid().toString() : modifier.name();
+                    final NamespacedKey modifierKey = Objects.requireNonNull(NamespacedKey.fromString(modifierName),
+                            "Modifier key returned null");
+                    final Constructor<AttributeModifier> constructor = AttributeModifier.class.getDeclaredConstructor(
+                            NamespacedKey.class, double.class, AttributeModifier.Operation.class, slotGroup);
+                    return constructor.newInstance(
+                            modifierKey,
+                            modifier.amount(),
+                            AttributeModifier.Operation.values()[modifier.operationType()],
+                            slot == null ? slotGroup.getField(EQUIPMENT_SLOT_GROUP$ANY).get(null)
+                                    : EquipmentSlot.class.getDeclaredMethod(EQUIPMENT_SLOT$getGroup).invoke(slot)
+                    );
+                } catch (Throwable e) {
+                    plugin.log(Level.WARNING, "Error reflectively creating keyed attribute modifier", e);
+                    USE_KEYED_MODIFIERS = TriState.FALSE;
+                }
+            }
+            return new AttributeModifier(
+                    modifier.uuid(),
+                    modifier.name(),
+                    modifier.amount(),
+                    AttributeModifier.Operation.values()[modifier.operationType()],
+                    slotId != -1 ? EquipmentSlot.values()[slotId] : null
+            );
+        }
+
+        @Override
+        public void apply(@NotNull BukkitUser user, @NotNull BukkitHuskSync plugin) throws IllegalStateException {
+            Registry.ATTRIBUTE.forEach(id -> applyAttribute(
+                    user.getPlayer().getAttribute(id), getAttribute(id).orElse(null), plugin
+            ));
         }
 
     }
@@ -640,24 +708,38 @@ public abstract class BukkitData implements Data {
         private double health;
         @SerializedName("health_scale")
         private double healthScale;
+        @SerializedName("is_health_scaled")
+        private boolean isHealthScaled;
 
         @NotNull
-        public static BukkitData.Health from(double health, double healthScale) {
-            return new BukkitData.Health(health, healthScale);
+        public static BukkitData.Health from(double health, double scale, boolean isScaled) {
+            return new BukkitData.Health(health, scale, isScaled);
         }
 
+        /**
+         * @deprecated Use {@link #from(double, double, boolean)} instead
+         */
+        @NotNull
+        @Deprecated(since = "3.5.4")
+        public static BukkitData.Health from(double health, double scale) {
+            return from(health, scale, false);
+        }
+
+        /**
+         * @deprecated Use {@link #from(double, double, boolean)} instead
+         */
         @NotNull
         @Deprecated(forRemoval = true, since = "3.5")
-        @SuppressWarnings("unused")
-        public static BukkitData.Health from(double health, double maxHealth, double healthScale) {
-            return from(health, healthScale);
+        public static BukkitData.Health from(double health, @SuppressWarnings("unused") double max, double scale) {
+            return from(health, scale, false);
         }
 
         @NotNull
         public static BukkitData.Health adapt(@NotNull Player player) {
             return from(
                     player.getHealth(),
-                    player.isHealthScaled() ? player.getHealthScale() : 0d
+                    player.getHealthScale(),
+                    player.isHealthScaled()
             );
         }
 
@@ -674,16 +756,12 @@ public abstract class BukkitData implements Data {
             }
 
             // Set health scale
+            double scale = healthScale <= 0 ? player.getMaxHealth() : healthScale;
             try {
-                if (healthScale != 0d) {
-                    player.setHealthScaled(true);
-                    player.setHealthScale(healthScale);
-                } else {
-                    player.setHealthScaled(false);
-                    player.setHealthScale(player.getMaxHealth());
-                }
+                player.setHealthScale(scale);
+                player.setHealthScaled(isHealthScaled);
             } catch (Throwable e) {
-                plugin.log(Level.WARNING, "Error setting %s's health scale to %s".formatted(player.getName(), healthScale), e);
+                plugin.log(Level.WARNING, "Error setting %s's health scale to %s".formatted(player.getName(), scale), e);
             }
         }
 

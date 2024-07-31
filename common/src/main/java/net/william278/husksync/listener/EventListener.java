@@ -53,7 +53,7 @@ public abstract class EventListener {
             return;
         }
         plugin.lockPlayer(user.getUuid());
-        plugin.getDataSyncer().setUserData(user);
+        plugin.getDataSyncer().syncApplyUserData(user);
     }
 
     /**
@@ -66,7 +66,7 @@ public abstract class EventListener {
             return;
         }
         plugin.lockPlayer(user.getUuid());
-        plugin.getDataSyncer().saveUserData(user);
+        plugin.getDataSyncer().syncSaveUserData(user);
     }
 
     /**
@@ -107,7 +107,7 @@ public abstract class EventListener {
     /**
      * Handle the plugin disabling
      */
-    public final void handlePluginDisable() {
+    public void handlePluginDisable() {
         // Save for all online players
         plugin.getOnlineUsers().stream()
                 .filter(user -> !plugin.isLocked(user.getUuid()) && !user.isNpc())

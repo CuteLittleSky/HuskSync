@@ -3,6 +3,7 @@ import org.apache.tools.ant.filters.ReplaceTokens
 plugins {
     id 'com.github.johnrengelman.shadow' version '8.1.1'
     id 'org.cadixdev.licenser' version '0.6.1' apply false
+    id 'fabric-loom' version '1.7-SNAPSHOT' apply false
     id 'org.ajoberstar.grgit' version '5.2.2'
     id 'maven-publish'
     id 'java'
@@ -69,6 +70,8 @@ allprojects {
     repositories {
         mavenLocal()
         mavenCentral()
+        maven { url 'https://repo.william278.net/releases/' }
+        maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
         maven { url 'https://hub.spigotmc.org/nexus/content/repositories/snapshots/' }
         maven { url "https://repo.dmulloy2.net/repository/public/" }
         maven { url 'https://repo.codemc.io/repository/maven-public/' }
@@ -77,13 +80,12 @@ allprojects {
         maven { url 'https://jitpack.io' }
         maven { url 'https://mvn-repo.arim.space/lesser-gpl3/' }
         maven { url 'https://libraries.minecraft.net/' }
-        maven { url 'https://repo.william278.net/releases/' }
     }
 
     dependencies {
-        testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.2'
-        testImplementation 'org.junit.jupiter:junit-jupiter-params:5.10.2'
-        testImplementation 'org.junit.jupiter:junit-jupiter-engine:5.10.2'
+        testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.3'
+        testImplementation 'org.junit.jupiter:junit-jupiter-params:5.10.3'
+        testImplementation 'org.junit.jupiter:junit-jupiter-engine:5.10.3'
     }
 
     test {
@@ -97,14 +99,20 @@ allprojects {
     }
 
     processResources {
+        def tokenMap = rootProject.ext.properties
+        tokenMap.merge("grgit",'',(s, s2) -> s)
         filesMatching(['**/*.json', '**/*.yml']) {
             filter ReplaceTokens as Class, beginToken: '${', endToken: '}',
-                    tokens: rootProject.ext.properties
+                    tokens: tokenMap
         }
     }
 }
 
 subprojects {
+    if (['fabric'].contains(project.name)) {
+        apply plugin: 'fabric-loom'
+    }
+
     version rootProject.version
     archivesBaseName = "${rootProject.name}-${project.name.capitalize()}"
 
@@ -117,8 +125,13 @@ subprojects {
         archiveClassifier.set('')
     }
 
+    // Append the Minecraft to the version for Fabric projects
+    if (project.name == 'fabric') {
+        version += "+mc.${fabric_minecraft_version}"
+    }
+
     // API publishing
-    if (['common', 'bukkit'].contains(project.name)) {
+    if (['common', 'bukkit', 'fabric'].contains(project.name)) {
         java {
             withSourcesJar()
             withJavadocJar()
@@ -152,6 +165,19 @@ subprojects {
                         artifactId = 'husksync-bukkit'
                         version = "$rootProject.version"
                         artifact shadowJar
+                        artifact sourcesJar
+                        artifact javadocJar
+                    }
+                }
+            }
+
+            if (['fabric'].contains(project.name)) {
+                publications {
+                    mavenJavaFabric(MavenPublication) {
+                        groupId = 'net.william278.husksync'
+                        artifactId = 'husksync-fabric'
+                        version = "$rootProject.version+${fabric_minecraft_version}"
+                        artifact remapJar
                         artifact sourcesJar
                         artifact javadocJar
                     }
