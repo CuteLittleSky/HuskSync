@@ -1,5 +1,5 @@
 plugins {
-    id 'xyz.jpenilla.run-paper' version '2.3.0'
+    id 'xyz.jpenilla.run-paper' version '2.3.1'
 }
 
 dependencies {
@@ -8,7 +8,7 @@ dependencies {
 
     implementation 'net.william278.uniform:uniform-paper:1.2.1'
 
-    compileOnly 'io.papermc.paper:paper-api:1.19.4-R0.1-SNAPSHOT'
+    compileOnly "io.papermc.paper:paper-api:${bukkit_paper_api}"
     compileOnly 'org.jetbrains:annotations:24.1.0'
     compileOnly 'org.projectlombok:lombok:1.18.34'
 
@@ -34,7 +34,6 @@ shadowJar {
     relocate 'net.william278.desertwell', 'net.william278.husksync.libraries.desertwell'
     relocate 'net.william278.paginedown', 'net.william278.husksync.libraries.paginedown'
     relocate 'net.william278.mapdataapi', 'net.william278.husksync.libraries.mapdataapi'
-    relocate 'net.william278.andjam', 'net.william278.husksync.libraries.andjam'
     relocate 'net.william278.mpdbconverter', 'net.william278.husksync.libraries.mpdbconverter'
     relocate 'net.william278.hslmigrator', 'net.william278.husksync.libraries.hslconverter'
     relocate 'org.json', 'net.william278.husksync.libraries.json'
@@ -50,10 +49,6 @@ shadowJar {
 
 tasks {
     runServer {
-        minecraftVersion('1.21')
-
-        downloadPlugins {
-            url('https://download.luckperms.net/1549/bukkit/loader/LuckPerms-Bukkit-5.4.134.jar')
-        }
+        minecraftVersion('1.21.1')
     }
 }

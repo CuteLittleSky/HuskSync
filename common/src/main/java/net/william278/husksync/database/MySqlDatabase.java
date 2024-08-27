@@ -124,11 +124,11 @@ public class MySqlDatabase extends Database {
                 }
             } catch (SQLException e) {
                 throw new IllegalStateException("Failed to create database tables. Please ensure you are running MySQL v8.0+ " +
-                        "and that your connecting user account has privileges to create tables.", e);
+                                                "and that your connecting user account has privileges to create tables.", e);
             }
         } catch (SQLException | IOException e) {
             throw new IllegalStateException("Failed to establish a connection to the MySQL database. " +
-                    "Please check the supplied database credentials in the config file", e);
+                                            "Please check the supplied database credentials in the config file", e);
         }
     }
 
@@ -216,6 +216,27 @@ public class MySqlDatabase extends Database {
             plugin.log(Level.SEVERE, "Failed to fetch a user by name from the database", e);
         }
         return Optional.empty();
+    }
+
+    @Override
+    @NotNull
+    public List<User> getAllUsers() {
+        final List<User> users = Lists.newArrayList();
+        try (Connection connection = getConnection()) {
+            try (PreparedStatement statement = connection.prepareStatement(formatStatementTables("""
+                    SELECT `uuid`, `username`
+                    FROM `%users_table%`;
+                    """))) {
+                final ResultSet resultSet = statement.executeQuery();
+                while (resultSet.next()) {
+                    users.add(new User(UUID.fromString(resultSet.getString("uuid")),
+                            resultSet.getString("username")));
+                }
+            }
+        } catch (SQLException e) {
+            plugin.log(Level.SEVERE, "Failed to fetch a user by name from the database", e);
+        }
+        return users;
     }
 
     @Blocking

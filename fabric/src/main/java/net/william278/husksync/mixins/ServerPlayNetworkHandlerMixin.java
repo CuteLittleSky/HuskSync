@@ -44,13 +44,12 @@ public abstract class ServerPlayNetworkHandlerMixin {
     @Shadow
     public ServerPlayerEntity player;
 
-    @Shadow
     public abstract void sendPacket(Packet<?> packet);
 
     @Inject(method = "onPlayerAction", at = @At("HEAD"), cancellable = true)
     public void onPlayerAction(PlayerActionC2SPacket packet, CallbackInfo ci) {
         if (packet.getAction() == PlayerActionC2SPacket.Action.DROP_ITEM
-                || packet.getAction() == PlayerActionC2SPacket.Action.DROP_ALL_ITEMS) {
+            || packet.getAction() == PlayerActionC2SPacket.Action.DROP_ALL_ITEMS) {
             ItemStack stack = player.getStackInHand(Hand.MAIN_HAND);
             ActionResult result = ItemDropCallback.EVENT.invoker().interact(player, stack);
 
@@ -83,7 +82,7 @@ public abstract class ServerPlayNetworkHandlerMixin {
 
     @Inject(method = "onCreativeInventoryAction", at = @At("HEAD"), cancellable = true)
     public void onCreativeInventoryAction(CreativeInventoryActionC2SPacket packet, CallbackInfo ci) {
-        int slot = packet.getSlot();
+        int slot = packet.slot();
         if (slot < 0) return;
 
         ItemStack stack = this.player.getInventory().getStack(slot);

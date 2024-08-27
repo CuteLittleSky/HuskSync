@@ -137,6 +137,9 @@ public class BukkitHuskSync extends JavaPlugin implements HuskSync, BukkitTask.S
     public void onEnable() {
         this.audiences = BukkitAudiences.create(this);
 
+        // Check compatibility
+        checkCompatibility();
+
         // Register commands
         initialize("commands", (plugin) -> getUniform().register(PluginCommand.Type.create(this)));
 
@@ -331,6 +334,12 @@ public class BukkitHuskSync extends JavaPlugin implements HuskSync, BukkitTask.S
     @Override
     public String getPlatformType() {
         return PLATFORM_TYPE_ID;
+    }
+
+    @Override
+    @NotNull
+    public String getServerVersion() {
+        return String.format("%s/%s", getServer().getName(), getServer().getVersion());
     }
 
     @Override

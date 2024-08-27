@@ -22,9 +22,8 @@ package net.william278.husksync.data;
 import com.google.common.collect.Sets;
 import com.google.gson.annotations.SerializedName;
 import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.RequiredArgsConstructor;
 import lombok.experimental.Accessors;
 import net.kyori.adventure.key.Key;
 import net.william278.husksync.HuskSync;
@@ -132,7 +131,7 @@ public interface Data {
         /**
          * Represents a potion effect
          *
-         * @param type          the type of potion effect
+         * @param type          the key of potion effect
          * @param amplifier     the amplifier of the potion effect
          * @param duration      the duration of the potion effect
          * @param isAmbient     whether the potion effect is ambient
@@ -341,47 +340,69 @@ public interface Data {
 
         @Getter
         @Accessors(fluent = true)
-        @AllArgsConstructor
-        @NoArgsConstructor
+        @RequiredArgsConstructor
         final class Modifier {
+            final static String ANY_EQUIPMENT_SLOT_GROUP = "any";
+
             @Getter(AccessLevel.NONE)
             @Nullable
             @SerializedName("uuid")
-            private UUID uuid;
+            private UUID uuid = null;
+
+            // Since 1.21.1: Name, amount, operation, slotGroup
             @SerializedName("name")
             private String name;
+
             @SerializedName("amount")
             private double amount;
+
             @SerializedName("operation")
-            private int operationType;
+            private int operation;
+
             @SerializedName("equipment_slot")
+            @Deprecated(since = "3.7")
             private int equipmentSlot;
 
-            public Modifier(@NotNull String name, double amount, int operationType, int equipmentSlot) {
+            @SerializedName("equipment_slot_group")
+            private String slotGroup = ANY_EQUIPMENT_SLOT_GROUP;
+
+            public Modifier(@NotNull String name, double amount, int operation, @NotNull String slotGroup) {
                 this.name = name;
                 this.amount = amount;
-                this.operationType = operationType;
+                this.operation = operation;
+                this.slotGroup = slotGroup;
+            }
+
+            @Deprecated(since = "3.7")
+            public Modifier(@NotNull UUID uuid, @NotNull String name, double amount, int operation, int equipmentSlot) {
+                this.name = name;
+                this.amount = amount;
+                this.operation = operation;
                 this.equipmentSlot = equipmentSlot;
             }
 
             @Override
             public boolean equals(Object obj) {
                 if (obj instanceof Modifier other) {
-                    if (uuid == null || other.uuid == null) {
-                        return name.equals(other.name);
+                    if (uuid != null && other.uuid != null) {
+                        return uuid.equals(other.uuid);
                     }
-                    return uuid.equals(other.uuid);
+                    return name.equals(other.name);
                 }
                 return super.equals(obj);
             }
 
             public double modify(double value) {
-                return switch (operationType) {
+                return switch (operation) {
                     case 0 -> value + amount;
                     case 1 -> value * amount;
                     case 2 -> value * (1 + amount);
                     default -> value;
                 };
+            }
+
+            public boolean hasUuid() {
+                return uuid != null;
             }
 
             @NotNull

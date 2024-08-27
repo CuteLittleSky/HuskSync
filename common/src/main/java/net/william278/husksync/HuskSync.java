@@ -39,6 +39,7 @@ import net.william278.husksync.redis.RedisManager;
 import net.william278.husksync.sync.DataSyncer;
 import net.william278.husksync.user.ConsoleUser;
 import net.william278.husksync.user.OnlineUser;
+import net.william278.husksync.util.CompatibilityChecker;
 import net.william278.husksync.util.LegacyConverter;
 import net.william278.husksync.util.Task;
 import net.william278.uniform.Uniform;
@@ -52,7 +53,8 @@ import java.util.logging.Level;
 /**
  * Abstract implementation of the HuskSync plugin.
  */
-public interface HuskSync extends Task.Supplier, EventDispatcher, ConfigProvider, SerializerRegistry {
+public interface HuskSync extends Task.Supplier, EventDispatcher, ConfigProvider, SerializerRegistry,
+        CompatibilityChecker {
 
     int SPIGOT_RESOURCE_ID = 97144;
 
@@ -256,6 +258,14 @@ public interface HuskSync extends Task.Supplier, EventDispatcher, ConfigProvider
     String getPlatformType();
 
     /**
+     * Returns the server software version
+     *
+     * @return the server software version string
+     */
+    @NotNull
+    String getServerVersion();
+
+    /**
      * Returns the legacy data converter if it exists
      *
      * @return the {@link LegacyConverter}
@@ -265,10 +275,10 @@ public interface HuskSync extends Task.Supplier, EventDispatcher, ConfigProvider
     @NotNull
     default UpdateChecker getUpdateChecker() {
         return UpdateChecker.builder()
-            .currentVersion(getPluginVersion())
-            .endpoint(UpdateChecker.Endpoint.SPIGOT)
-            .resource(Integer.toString(SPIGOT_RESOURCE_ID))
-            .build();
+                .currentVersion(getPluginVersion())
+                .endpoint(UpdateChecker.Endpoint.SPIGOT)
+                .resource(Integer.toString(SPIGOT_RESOURCE_ID))
+                .build();
     }
 
     default void checkForUpdates() {
@@ -276,8 +286,8 @@ public interface HuskSync extends Task.Supplier, EventDispatcher, ConfigProvider
             getUpdateChecker().check().thenAccept(checked -> {
                 if (!checked.isUpToDate()) {
                     log(Level.WARNING, String.format(
-                        "A new version of HuskSync is available: v%s (running v%s)",
-                        checked.getLatestVersion(), getPluginVersion())
+                            "A new version of HuskSync is available: v%s (running v%s)",
+                            checked.getLatestVersion(), getPluginVersion())
                     );
                 }
             });
@@ -320,17 +330,21 @@ public interface HuskSync extends Task.Supplier, EventDispatcher, ConfigProvider
     final class FailedToLoadException extends IllegalStateException {
 
         private static final String FORMAT = """
-            HuskSync has failed to load! The plugin will not be enabled and no data will be synchronized.
-            Please make sure the plugin has been setup correctly (https://william278.net/docs/husksync/setup):
-                            
-            1) Make sure you've entered your MySQL, MariaDB or MongoDB database details correctly in config.yml
-            2) Make sure your Redis server details are also correct in config.yml
-            3) Make sure your config is up-to-date (https://william278.net/docs/husksync/config-file)
-            4) Check the error below for more details
-                            
-            Caused by: %s""";
+                HuskSync has failed to load! The plugin will not be enabled and no data will be synchronized.
+                Please make sure the plugin has been setup correctly (https://william278.net/docs/husksync/setup):
+                
+                1) Make sure you've entered your MySQL, MariaDB or MongoDB database details correctly in config.yml
+                2) Make sure your Redis server details are also correct in config.yml
+                3) Make sure your config is up-to-date (https://william278.net/docs/husksync/config-file)
+                4) Check the error below for more details
+                
+                Caused by: %s""";
 
-        FailedToLoadException(@NotNull String message, @NotNull Throwable cause) {
+        public FailedToLoadException(@NotNull String message) {
+            super(String.format(FORMAT, message));
+        }
+
+        public FailedToLoadException(@NotNull String message, @NotNull Throwable cause) {
             super(String.format(FORMAT, message), cause);
         }
 
