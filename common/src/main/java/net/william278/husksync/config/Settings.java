@@ -141,6 +141,9 @@ public class Settings {
         @Getter(AccessLevel.NONE)
         private Map<String, String> tableNames = Database.TableName.getDefaults();
 
+        @Comment("Whether to run the creation SQL on the database when the server starts. Don't modify this unless you know what you're doing!")
+        private boolean createTables = true;
+
         @NotNull
         public String getTableName(@NotNull Database.TableName tableName) {
             return tableNames.getOrDefault(tableName.name().toLowerCase(Locale.ENGLISH), tableName.getDefaultName());
@@ -156,7 +159,7 @@ public class Settings {
     @NoArgsConstructor(access = AccessLevel.PRIVATE)
     public static class RedisSettings {
 
-        @Comment("Specify the credentials of your Redis database here. Set \"password\" to '' if you don't have one")
+        @Comment("Specify the credentials of your Redis server here. Set \"password\" to '' if you don't have one")
         private RedisCredentials credentials = new RedisCredentials();
 
         @Getter
@@ -275,12 +278,19 @@ public class Settings {
         @NoArgsConstructor(access = AccessLevel.PRIVATE)
         public static class AttributeSettings {
 
-            @Comment({"Which attributes should not be saved when syncing users. Supports wildcard matching.",
+            @Comment({"Which attribute types should be saved as part of attribute syncing. Supports wildcard matching.",
                     "(e.g. ['minecraft:generic.max_health', 'minecraft:generic.*'])"})
             @Getter(AccessLevel.NONE)
-            private List<String> ignoredAttributes = new ArrayList<>(List.of(""));
+            private List<String> syncedAttributes = new ArrayList<>(List.of(
+                    "minecraft:generic.max_health", "minecraft:max_health",
+                    "minecraft:generic.max_absorption", "minecraft:max_absorption",
+                    "minecraft:generic.luck", "minecraft:luck",
+                    "minecraft:generic.scale", "minecraft:scale",
+                    "minecraft:generic.step_height", "minecraft:step_height",
+                    "minecraft:generic.gravity", "minecraft:gravity"
+            ));
 
-            @Comment({"Which modifiers should not be saved when syncing users. Supports wildcard matching.",
+            @Comment({"Which attribute modifiers should be saved. Supports wildcard matching.",
                     "(e.g. ['minecraft:effect.speed', 'minecraft:effect.*'])"})
             @Getter(AccessLevel.NONE)
             private List<String> ignoredModifiers = new ArrayList<>(List.of(
@@ -298,7 +308,7 @@ public class Settings {
             }
 
             public boolean isIgnoredAttribute(@NotNull String attribute) {
-                return ignoredAttributes.stream().anyMatch(wildcard -> matchesWildcard(wildcard, attribute));
+                return syncedAttributes.stream().noneMatch(wildcard -> matchesWildcard(wildcard, attribute));
             }
 
             public boolean isIgnoredModifier(@NotNull String modifier) {

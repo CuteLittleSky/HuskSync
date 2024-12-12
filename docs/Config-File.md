@@ -65,7 +65,7 @@ database:
     user_data: husksync_user_data
 # Redis settings
 redis:
-  # Specify the credentials of your Redis database here. Set "password" to '' if you don't have one
+  # Specify the credentials of your Redis server here. Set "password" to '' if you don't have one
   credentials:
     host: localhost
     port: 6379
@@ -136,10 +136,22 @@ synchronization:
     - '*'
   # Configuration for how to sync attributes
   attributes:
-    # Which attributes should not be saved when syncing users. Supports wildcard matching.
+    # Which attribute types should be saved as part of attribute syncing. Supports wildcard matching.
     # (e.g. ['minecraft:generic.max_health', 'minecraft:generic.*'])
-    ignored_attributes: []
-    # Which modifiers should not be saved when syncing users. Supports wildcard matching.
+    synced_attributes: 
+      - "minecraft:generic.max_health"
+      - "minecraft:max_health"
+      - "minecraft:generic.max_absorption"
+      - "minecraft:max_absorption"
+      - "minecraft:generic.luck"
+      - "minecraft:luck"
+      - "minecraft:generic.scale"
+      - "minecraft:scale"
+      - "minecraft:generic.step_height"
+      - "minecraft:step_height"
+      - "minecraft:generic.gravity"
+      - "minecraft:gravity"
+    # Which attribute modifiers should not be saved when syncing users. Supports wildcard matching.
     # (e.g. ['minecraft:effect.speed', 'minecraft:effect.*'])
     ignored_modifiers: ['minecraft:effect.*', 'minecraft:creative_mode_*']
   # Event priorities for listeners (HIGHEST, NORMAL, LOWEST). Change if you encounter plugin conflicts

@@ -35,6 +35,7 @@ import org.bukkit.*;
 import org.bukkit.advancement.AdvancementProgress;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.EquipmentSlotGroup;
@@ -452,9 +453,10 @@ public abstract class BukkitData implements Data {
             Registry.STATISTIC.forEach(id -> {
                 switch (id.getType()) {
                     case UNTYPED -> addStatistic(player, id, generic);
-                    case BLOCK -> addMaterialStatistic(player, id, blocks, true);
-                    case ITEM -> addMaterialStatistic(player, id, items, false);
-                    case ENTITY -> addEntityStatistic(player, id, entities);
+                    // Todo - Future - Use BLOCK and ITEM registries when API stabilizes
+                    case BLOCK -> addStatistic(player, id, Registry.MATERIAL, blocks);
+                    case ITEM -> addStatistic(player, id, Registry.MATERIAL, items);
+                    case ENTITY -> addStatistic(player, id, Registry.ENTITY_TYPE, entities);
                 }
             });
             return new BukkitData.Statistics(generic, blocks, items, entities);
@@ -475,43 +477,31 @@ public abstract class BukkitData implements Data {
             }
         }
 
-        private static void addMaterialStatistic(@NotNull Player p, @NotNull Statistic id,
-                                                 @NotNull Map<String, Map<String, Integer>> map, boolean isBlock) {
-            Registry.MATERIAL.forEach(material -> {
-                if ((material.isBlock() && !isBlock) || (material.isItem() && isBlock)) {
-                    return;
-                }
-                final int stat = p.getStatistic(id, material);
-                if (stat != 0) {
-                    map.computeIfAbsent(id.getKey().getKey(), k -> Maps.newHashMap())
-                            .put(material.getKey().getKey(), stat);
-                }
-            });
-        }
-
-        private static void addEntityStatistic(@NotNull Player p, @NotNull Statistic id,
-                                               @NotNull Map<String, Map<String, Integer>> map) {
-            Registry.ENTITY_TYPE.forEach(entity -> {
-                if (!entity.isAlive()) {
-                    return;
-                }
-                final int stat = p.getStatistic(id, entity);
-                if (stat != 0) {
-                    map.computeIfAbsent(id.getKey().getKey(), k -> Maps.newHashMap())
-                            .put(entity.getKey().getKey(), stat);
+        private static <R extends Keyed> void addStatistic(@NotNull Player p, @NotNull Statistic id,
+                                                           @NotNull Registry<R> registry,
+                                                           @NotNull Map<String, Map<String, Integer>> map) {
+            registry.forEach(i -> {
+                try {
+                    final int stat = i instanceof Material m ? p.getStatistic(id, m) :
+                            (i instanceof EntityType e ? p.getStatistic(id, e) : -1);
+                    if (stat != 0) {
+                        map.compute(id.getKey().getKey(), (k, v) -> v == null ? Maps.newHashMap() : v)
+                                .put(i.getKey().getKey(), stat);
+                    }
+                } catch (IllegalStateException ignored) {
                 }
             });
         }
 
         @Override
-        public void apply(@NotNull BukkitUser user, @NotNull BukkitHuskSync plugin) {
-            genericStatistics.forEach((id, v) -> applyStat(user, id, Statistic.Type.UNTYPED, v));
-            blockStatistics.forEach((id, m) -> m.forEach((b, v) -> applyStat(user, id, Statistic.Type.BLOCK, v, b)));
-            itemStatistics.forEach((id, m) -> m.forEach((i, v) -> applyStat(user, id, Statistic.Type.ITEM, v, i)));
-            entityStatistics.forEach((id, m) -> m.forEach((e, v) -> applyStat(user, id, Statistic.Type.ENTITY, v, e)));
+        public void apply(@NotNull BukkitUser user, @NotNull BukkitHuskSync p) {
+            genericStatistics.forEach((k, v) -> applyStat(p, user, k, Statistic.Type.UNTYPED, v));
+            blockStatistics.forEach((k, m) -> m.forEach((b, v) -> applyStat(p, user, k, Statistic.Type.BLOCK, v, b)));
+            itemStatistics.forEach((k, m) -> m.forEach((i, v) -> applyStat(p, user, k, Statistic.Type.ITEM, v, i)));
+            entityStatistics.forEach((k, m) -> m.forEach((e, v) -> applyStat(p, user, k, Statistic.Type.ENTITY, v, e)));
         }
 
-        private void applyStat(@NotNull UserDataHolder user, @NotNull String id,
+        private void applyStat(@NotNull HuskSync plugin, @NotNull UserDataHolder user, @NotNull String id,
                                @NotNull Statistic.Type type, int value, @NotNull String... key) {
             final Player player = ((BukkitUser) user).getPlayer();
             final Statistic stat = matchStatistic(id);
@@ -525,7 +515,8 @@ public abstract class BukkitData implements Data {
                     case BLOCK, ITEM -> player.setStatistic(stat, Objects.requireNonNull(matchMaterial(key[0])), value);
                     case ENTITY -> player.setStatistic(stat, Objects.requireNonNull(matchEntityType(key[0])), value);
                 }
-            } catch (Throwable ignored) {
+            } catch (Throwable a) {
+                plugin.log(Level.WARNING, "Failed to apply statistic " + id, a);
             }
         }
 
@@ -571,9 +562,8 @@ public abstract class BukkitData implements Data {
             final AttributeSettings settings = plugin.getSettings().getSynchronization().getAttributes();
             Registry.ATTRIBUTE.forEach(id -> {
                 final AttributeInstance instance = player.getAttribute(id);
-                if (instance == null || Double.compare(instance.getValue(), instance.getDefaultValue()) == 0
-                    || settings.isIgnoredAttribute(id.getKey().toString())) {
-                    return; // We don't sync unmodified or disabled attributes
+                if (settings.isIgnoredAttribute(id.getKey().toString()) || instance == null) {
+                    return; // We don't sync attributes not marked as to be synced
                 }
                 attributes.add(adapt(instance, settings));
             });
@@ -619,8 +609,8 @@ public abstract class BukkitData implements Data {
             if (instance == null) {
                 return;
             }
-            instance.setBaseValue(attribute == null ? instance.getDefaultValue() : attribute.baseValue());
             instance.getModifiers().forEach(instance::removeModifier);
+            instance.setBaseValue(attribute == null ? instance.getValue() : attribute.baseValue());
             if (attribute != null) {
                 attribute.modifiers().stream()
                         .filter(mod -> instance.getModifiers().stream().map(AttributeModifier::getName)
@@ -642,9 +632,13 @@ public abstract class BukkitData implements Data {
 
         @Override
         public void apply(@NotNull BukkitUser user, @NotNull BukkitHuskSync plugin) throws IllegalStateException {
-            Registry.ATTRIBUTE.forEach(id -> applyAttribute(
-                    user.getPlayer().getAttribute(id), getAttribute(id).orElse(null)
-            ));
+            final AttributeSettings settings = plugin.getSettings().getSynchronization().getAttributes();
+            Registry.ATTRIBUTE.forEach(id -> {
+                if (settings.isIgnoredAttribute(id.getKey().toString())) {
+                    return;
+                }
+                applyAttribute(user.getPlayer().getAttribute(id), getAttribute(id).orElse(null));
+            });
         }
 
     }
